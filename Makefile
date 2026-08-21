@@ -22,13 +22,15 @@ SRCS = src/main.c \
        src/dataset.c \
        src/preprocessing.c \
        src/perceptron.c \
+       src/prediction.c \
+       src/evaluation.c \
        src/config.c \
        src/utils.c
 
 # Test source files
 TEST_DATASET_SRCS    = tests/test_dataset.c src/dataset.c src/config.c src/utils.c
 TEST_PREPROC_SRCS    = tests/test_preprocessing.c src/dataset.c src/preprocessing.c src/config.c src/utils.c
-TEST_PERCEPTRON_SRCS = tests/test_perceptron.c src/dataset.c src/preprocessing.c src/perceptron.c src/config.c src/utils.c
+TEST_PERCEPTRON_SRCS = tests/test_perceptron.c src/dataset.c src/preprocessing.c src/perceptron.c src/prediction.c src/evaluation.c src/config.c src/utils.c
 
 # Output directory and targets
 BUILDDIR           = build

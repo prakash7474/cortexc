@@ -1,8 +1,11 @@
 /**
  * main.c - C-AI Entry Point
  *
- * Phase 3: Demonstrates the full dataset → preprocessing → perceptron pipeline.
- * Loads CSV data, normalizes features, trains a perceptron, and makes predictions.
+ * Phase 3: Demonstrates the full dataset -> preprocessing -> perceptron ->
+ * prediction -> evaluation pipeline.
+ *
+ * Loads CSV data, normalizes features, trains a perceptron,
+ * makes predictions, calculates accuracy, and prints confusion matrix.
  *
  * C17 standard
  */
@@ -14,6 +17,8 @@
 #include "dataset.h"
 #include "preprocessing.h"
 #include "perceptron.h"
+#include "prediction.h"
+#include "evaluation.h"
 
 int main(void)
 {
@@ -22,10 +27,10 @@ int main(void)
     printf("      CPU-ONLY ML ENGINE\n");
     printf("========================================\n\n");
 
-    /* --- Step 1: Load dataset --- */
+    /* --- Step 1: Load CSV --- */
     const char *csv_path = "data/students.csv";
 
-    printf("Loading dataset:\n%s\n\n", csv_path);
+    printf("Dataset:\n%s\n\n", csv_path);
 
     Dataset *dataset = dataset_load_csv(csv_path);
     if (!dataset) {
@@ -33,11 +38,9 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    dataset_print_info(dataset);
+    printf("Features:\n%zu\n\n", dataset->num_features);
 
-    /* --- Step 2: Train/test split --- */
-    printf("\nSplitting dataset...\n");
-
+    /* --- Step 2: Split dataset --- */
     Dataset *train_set = NULL;
     Dataset *test_set = NULL;
 
@@ -48,12 +51,10 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    printf("Training samples: %zu\n", train_set->num_samples);
-    printf("Testing samples : %zu\n", test_set->num_samples);
+    printf("Training samples:\n%zu\n", train_set->num_samples);
+    printf("Testing samples:\n%zu\n\n", test_set->num_samples);
 
     /* --- Step 3: Fit scaler on training data only --- */
-    printf("\nFitting scaler using training data...\n");
-
     Scaler scaler = {0};
 
     if (scaler_fit(&scaler, train_set) != 0) {
@@ -65,7 +66,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    /* --- Step 4: Transform both train and test data --- */
+    /* --- Step 4: Transform training data --- */
     if (scaler_transform(&scaler, train_set) != 0) {
         fprintf(stderr, "Failed to transform training data. Exiting.\n");
         scaler_free(&scaler);
@@ -75,6 +76,7 @@ int main(void)
         return EXIT_FAILURE;
     }
 
+    /* --- Step 5: Transform testing data --- */
     if (scaler_transform(&scaler, test_set) != 0) {
         fprintf(stderr, "Failed to transform testing data. Exiting.\n");
         scaler_free(&scaler);
@@ -84,14 +86,17 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    printf("Normalization complete.\n");
+    /* --- Step 6: Initialize perceptron --- */
+    printf("----------------------------------------\n");
+    printf("PERCEPTRON TRAINING\n");
+    printf("----------------------------------------\n\n");
 
-    /* --- Step 5: Train perceptron --- */
-    printf("\nTraining perceptron...\n");
+    printf("Learning rate: %.3f\n", DEFAULT_LEARNING_RATE);
+    printf("Epochs: %d\n\n", DEFAULT_MAX_EPOCHS);
 
-    Perceptron *model = perceptron_create(train_set->num_features,
-                                          DEFAULT_LEARNING_RATE,
-                                          DEFAULT_RANDOM_SEED);
+    Perceptron *model = perceptron_init(train_set->num_features,
+                                        DEFAULT_LEARNING_RATE,
+                                        (size_t)DEFAULT_MAX_EPOCHS);
     if (!model) {
         fprintf(stderr, "Failed to create perceptron. Exiting.\n");
         scaler_free(&scaler);
@@ -101,8 +106,8 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    int epochs = perceptron_train(model, train_set, DEFAULT_MAX_EPOCHS,
-                                  DEFAULT_RANDOM_SEED);
+    /* --- Step 7: Train perceptron --- */
+    int epochs = perceptron_train(model, train_set);
     if (epochs < 0) {
         fprintf(stderr, "Training failed. Exiting.\n");
         perceptron_free(&model);
@@ -113,53 +118,69 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    printf("Training complete: %d epochs\n", epochs);
+    printf("\nTraining completed.\n\n");
 
-    /* --- Step 6: Evaluate on training data --- */
-    printf("\nTraining accuracy:\n");
-
-    {
-        int correct = 0;
-        for (size_t i = 0; i < train_set->num_samples; i++) {
-            int pred = perceptron_forward(model, train_set->samples[i].features);
-            if (pred == train_set->samples[i].label) {
-                correct++;
-            }
-        }
-        printf("  Train: %d / %zu (%.1f%%)\n", correct, train_set->num_samples,
-               100.0f * (float)correct / (float)train_set->num_samples);
+    /* --- Step 8: Predict test samples --- */
+    int *predictions = predict_dataset(model, test_set);
+    if (!predictions) {
+        fprintf(stderr, "Prediction failed. Exiting.\n");
+        perceptron_free(&model);
+        scaler_free(&scaler);
+        dataset_free(&train_set);
+        dataset_free(&test_set);
+        dataset_free(&dataset);
+        return EXIT_FAILURE;
     }
 
-    {
-        int correct = 0;
-        for (size_t i = 0; i < test_set->num_samples; i++) {
-            int pred = perceptron_forward(model, test_set->samples[i].features);
-            if (pred == test_set->samples[i].label) {
-                correct++;
-            }
-        }
-        printf("  Test : %d / %zu (%.1f%%)\n", correct, test_set->num_samples,
-               100.0f * (float)correct / (float)test_set->num_samples);
+    /* --- Step 9: Calculate accuracy --- */
+    int *actuals = malloc(test_set->num_samples * sizeof(int));
+    if (!actuals) {
+        fprintf(stderr, "Memory allocation failed. Exiting.\n");
+        free(predictions);
+        perceptron_free(&model);
+        scaler_free(&scaler);
+        dataset_free(&train_set);
+        dataset_free(&test_set);
+        dataset_free(&dataset);
+        return EXIT_FAILURE;
     }
 
-    /* --- Step 7: Print predictions --- */
-    printf("\nPredictions on test data:\n");
     for (size_t i = 0; i < test_set->num_samples; i++) {
-        int pred = perceptron_forward(model, test_set->samples[i].features);
-        int actual = test_set->samples[i].label;
-        printf("  Sample %zu: predicted=%d, actual=%d %s\n",
-               i + 1, pred, actual, (pred == actual) ? "OK" : "MISS");
+        actuals[i] = test_set->samples[i].label;
     }
 
-    /* --- Step 8: Cleanup --- */
-    printf("\nPhase 3 pipeline completed successfully.\n");
+    double accuracy = calculate_accuracy(predictions, actuals,
+                                         test_set->num_samples);
 
+    printf("----------------------------------------\n");
+    printf("EVALUATION\n");
+    printf("----------------------------------------\n\n");
+
+    printf("Accuracy: %.2f%%\n", accuracy);
+
+    /* --- Step 10: Print confusion matrix --- */
+    ConfusionMatrix cm = {0};
+    if (calculate_confusion_matrix(predictions, actuals,
+                                   test_set->num_samples, &cm) == 0) {
+        print_confusion_matrix(&cm);
+    }
+
+    printf("\n");
+
+    /* --- Step 11: Free model --- */
     perceptron_free(&model);
+
+    /* --- Step 12: Free datasets --- */
     scaler_free(&scaler);
     dataset_free(&train_set);
     dataset_free(&test_set);
     dataset_free(&dataset);
 
+    free(predictions);
+    free(actuals);
+
+    /* --- Step 13: Exit cleanly --- */
+    printf("Phase 3 pipeline completed successfully.\n");
     printf("Memory cleanup completed.\n");
 
     return EXIT_SUCCESS;

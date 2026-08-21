@@ -20,8 +20,9 @@ struct Dataset;
  *
  * weights:        dynamically allocated array of weights (one per feature)
  * bias:           bias term
- * num_features:   number of input features
+ * feature_count:  number of input features
  * learning_rate:  step size for weight updates (0 < lr <= 1)
+ * epochs:         number of training epochs completed
  *
  * The perceptron computes:
  *   output = step(w1*x1 + w2*x2 + ... + wn*xn + bias)
@@ -35,55 +36,77 @@ struct Dataset;
 typedef struct Perceptron {
     float  *weights;
     float   bias;
-    size_t  num_features;
     float   learning_rate;
+    size_t  feature_count;
+    size_t  epochs;
 } Perceptron;
 
 /**
- * perceptron_create - Allocate and initialize a new perceptron.
+ * perceptron_init - Allocate and initialize a new perceptron.
  *
- * num_features:   number of input features
- * learning_rate:  step size for weight updates
- * seed:           random seed for weight initialization
+ * All weights and bias are initialized to 0.
  *
- * Returns NULL on allocation failure.
+ * feature_count:  number of input features (must be > 0)
+ * learning_rate:  step size for weight updates (must be > 0)
+ * epochs:         maximum number of training epochs (must be > 0)
+ *
+ * Returns NULL on allocation failure or invalid parameters.
  */
-Perceptron *perceptron_create(size_t num_features, float learning_rate,
+Perceptron *perceptron_init(size_t feature_count, float learning_rate,
+                            size_t epochs);
+
+/**
+ * perceptron_create - Allocate and initialize a new perceptron (legacy alias).
+ *
+ * This is an alias for perceptron_init, kept for backward compatibility.
+ * Random seed parameter is ignored (weights start at 0 per Phase 3 spec).
+ */
+Perceptron *perceptron_create(size_t feature_count, float learning_rate,
                               unsigned int seed);
 
 /**
  * perceptron_forward - Compute the perceptron output for a single sample.
  *
+ * Computes: step(bias + sum(weight[i] * feature[i]))
  * Returns 0 or 1 (step activation).
  */
 int perceptron_forward(const Perceptron *p, const float *features);
 
 /**
- * perceptron_predict - Predict labels for all samples in a dataset.
+ * perceptron_predict - Predict label for a single sample.
  *
- * Writes predictions into the provided output array (must have
- * at least num_samples elements). Returns 0 on success, -1 on error.
+ * Alias for perceptron_forward. Returns 0 or 1.
  */
-int perceptron_predict(const Perceptron *p, const struct Dataset *dataset,
-                       int *predictions);
+int perceptron_predict(const Perceptron *p, const float *features);
 
 /**
  * perceptron_train - Train the perceptron on a dataset.
  *
- * dataset:      training data
- * max_epochs:   maximum number of training epochs
- * seed:         random seed for sample shuffling
+ * Implements the classic perceptron learning rule:
+ *   For each epoch:
+ *     For each training sample:
+ *       prediction = forward(features)
+ *       error = actual - prediction
+ *       weight[i] += learning_rate * error * feature[i]
+ *       bias += learning_rate * error
+ *     Count errors
+ *     Print epoch info
+ *     Stop early if errors == 0
+ *
+ * Stores the number of epochs completed in p->epochs.
  *
  * Returns the number of epochs completed. Stops early if
  * all samples are classified correctly (convergence).
+ * Returns -1 on error.
  */
-int perceptron_train(Perceptron *p, const struct Dataset *dataset,
-                     int max_epochs, unsigned int seed);
+int perceptron_train(Perceptron *p, const struct Dataset *dataset);
 
 /**
  * perceptron_free - Safely release all perceptron memory.
  *
+ * Frees weights array and the perceptron struct itself.
  * Handles NULL pointers gracefully.
+ * Sets the pointer to NULL after freeing.
  */
 void perceptron_free(Perceptron **p);
 
