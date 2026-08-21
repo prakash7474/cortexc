@@ -1,6 +1,6 @@
 # C-AI Makefile
 # CPU-Only Machine Learning in Pure C
-# Phase 2 - Dataset and Preprocessing Pipeline
+# Phase 3 - Perceptron Training Pipeline
 
 CC       = gcc
 INCLUDES = -Iinclude
@@ -21,18 +21,21 @@ CFLAGS = $(STD_CFLAGS)
 SRCS = src/main.c \
        src/dataset.c \
        src/preprocessing.c \
+       src/perceptron.c \
        src/config.c \
        src/utils.c
 
 # Test source files
-TEST_DATASET_SRCS   = tests/test_dataset.c src/dataset.c src/config.c src/utils.c
-TEST_PREPROC_SRCS   = tests/test_preprocessing.c src/dataset.c src/preprocessing.c src/config.c src/utils.c
+TEST_DATASET_SRCS    = tests/test_dataset.c src/dataset.c src/config.c src/utils.c
+TEST_PREPROC_SRCS    = tests/test_preprocessing.c src/dataset.c src/preprocessing.c src/config.c src/utils.c
+TEST_PERCEPTRON_SRCS = tests/test_perceptron.c src/dataset.c src/preprocessing.c src/perceptron.c src/config.c src/utils.c
 
 # Output directory and targets
-BUILDDIR        = build
-TARGET          = $(BUILDDIR)/c-ai
-TEST_DATASET    = $(BUILDDIR)/test_dataset
-TEST_PREPROC    = $(BUILDDIR)/test_preprocessing
+BUILDDIR           = build
+TARGET             = $(BUILDDIR)/c-ai
+TEST_DATASET       = $(BUILDDIR)/test_dataset
+TEST_PREPROC       = $(BUILDDIR)/test_preprocessing
+TEST_PERCEPTRON    = $(BUILDDIR)/test_perceptron
 
 # --- Default target ---
 all: $(TARGET)
@@ -47,19 +50,25 @@ $(TARGET): $(SRCS) | $(BUILDDIR)
 	@echo "Build complete: $(TARGET)"
 
 # --- Test targets ---
-tests: $(TEST_DATASET) $(TEST_PREPROC)
+tests: $(TEST_DATASET) $(TEST_PREPROC) $(TEST_PERCEPTRON)
 	@echo ""
 	@echo "=== Running Dataset Tests ==="
 	./$(TEST_DATASET)
 	@echo ""
 	@echo "=== Running Preprocessing Tests ==="
 	./$(TEST_PREPROC)
+	@echo ""
+	@echo "=== Running Perceptron Tests ==="
+	./$(TEST_PERCEPTRON)
 
 $(TEST_DATASET): $(TEST_DATASET_SRCS) | $(BUILDDIR)
 	$(CC) $(CFLAGS) $(INCLUDES) $(TEST_DATASET_SRCS) -o $(TEST_DATASET)
 
 $(TEST_PREPROC): $(TEST_PREPROC_SRCS) | $(BUILDDIR)
 	$(CC) $(CFLAGS) $(INCLUDES) $(TEST_PREPROC_SRCS) -o $(TEST_PREPROC)
+
+$(TEST_PERCEPTRON): $(TEST_PERCEPTRON_SRCS) | $(BUILDDIR)
+	$(CC) $(CFLAGS) $(INCLUDES) $(TEST_PERCEPTRON_SRCS) -o $(TEST_PERCEPTRON)
 
 # --- Debug build ---
 debug: CFLAGS = $(DEBUG_CFLAGS)
@@ -76,6 +85,7 @@ clean:
 	rm -f $(TARGET) $(TARGET).exe \
 	      $(TEST_DATASET) $(TEST_DATASET).exe \
 	      $(TEST_PREPROC) $(TEST_PREPROC).exe \
+	      $(TEST_PERCEPTRON) $(TEST_PERCEPTRON).exe \
 	      src/*.o
 	@echo "Clean complete"
 
@@ -85,7 +95,7 @@ run: $(TARGET)
 
 # --- Help ---
 help:
-	@echo "C-AI Build System (Phase 2)"
+	@echo "C-AI Build System (Phase 3)"
 	@echo "==========================="
 	@echo "  make          - Build the C-AI binary"
 	@echo "  make debug    - Build with debug symbols (-g -O0)"

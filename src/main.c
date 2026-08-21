@@ -1,9 +1,8 @@
 /**
  * main.c - C-AI Entry Point
  *
- * Phase 2: Demonstrates the dataset and preprocessing pipeline.
- * Loads a CSV dataset, prints info, splits into train/test,
- * normalizes features, and cleans up all memory.
+ * Phase 3: Demonstrates the full dataset → preprocessing → perceptron pipeline.
+ * Loads CSV data, normalizes features, trains a perceptron, and makes predictions.
  *
  * C17 standard
  */
@@ -14,6 +13,7 @@
 #include "config.h"
 #include "dataset.h"
 #include "preprocessing.h"
+#include "perceptron.h"
 
 int main(void)
 {
@@ -86,10 +86,75 @@ int main(void)
 
     printf("Normalization complete.\n");
 
-    /* --- Step 5: Confirmation --- */
-    printf("\nPhase 2 dataset pipeline completed successfully.\n");
+    /* --- Step 5: Train perceptron --- */
+    printf("\nTraining perceptron...\n");
 
-    /* --- Step 6: Free all memory --- */
+    Perceptron *model = perceptron_create(train_set->num_features,
+                                          DEFAULT_LEARNING_RATE,
+                                          DEFAULT_RANDOM_SEED);
+    if (!model) {
+        fprintf(stderr, "Failed to create perceptron. Exiting.\n");
+        scaler_free(&scaler);
+        dataset_free(&train_set);
+        dataset_free(&test_set);
+        dataset_free(&dataset);
+        return EXIT_FAILURE;
+    }
+
+    int epochs = perceptron_train(model, train_set, DEFAULT_MAX_EPOCHS,
+                                  DEFAULT_RANDOM_SEED);
+    if (epochs < 0) {
+        fprintf(stderr, "Training failed. Exiting.\n");
+        perceptron_free(&model);
+        scaler_free(&scaler);
+        dataset_free(&train_set);
+        dataset_free(&test_set);
+        dataset_free(&dataset);
+        return EXIT_FAILURE;
+    }
+
+    printf("Training complete: %d epochs\n", epochs);
+
+    /* --- Step 6: Evaluate on training data --- */
+    printf("\nTraining accuracy:\n");
+
+    {
+        int correct = 0;
+        for (size_t i = 0; i < train_set->num_samples; i++) {
+            int pred = perceptron_forward(model, train_set->samples[i].features);
+            if (pred == train_set->samples[i].label) {
+                correct++;
+            }
+        }
+        printf("  Train: %d / %zu (%.1f%%)\n", correct, train_set->num_samples,
+               100.0f * (float)correct / (float)train_set->num_samples);
+    }
+
+    {
+        int correct = 0;
+        for (size_t i = 0; i < test_set->num_samples; i++) {
+            int pred = perceptron_forward(model, test_set->samples[i].features);
+            if (pred == test_set->samples[i].label) {
+                correct++;
+            }
+        }
+        printf("  Test : %d / %zu (%.1f%%)\n", correct, test_set->num_samples,
+               100.0f * (float)correct / (float)test_set->num_samples);
+    }
+
+    /* --- Step 7: Print predictions --- */
+    printf("\nPredictions on test data:\n");
+    for (size_t i = 0; i < test_set->num_samples; i++) {
+        int pred = perceptron_forward(model, test_set->samples[i].features);
+        int actual = test_set->samples[i].label;
+        printf("  Sample %zu: predicted=%d, actual=%d %s\n",
+               i + 1, pred, actual, (pred == actual) ? "OK" : "MISS");
+    }
+
+    /* --- Step 8: Cleanup --- */
+    printf("\nPhase 3 pipeline completed successfully.\n");
+
+    perceptron_free(&model);
     scaler_free(&scaler);
     dataset_free(&train_set);
     dataset_free(&test_set);
