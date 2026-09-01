@@ -416,6 +416,103 @@ static void test_memory_estimation(void)
     TEST_PASS();
 }
 
+static void test_invalid_number(void)
+{
+    TEST_BEGIN("Non-numeric feature handling");
+
+    char path[] = "test_bad_number.csv";
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "feat1,feat2,label\n");
+        fprintf(f, "1.0,2.0,0\n");
+        fprintf(f, "3.0,abc,1\n"); /* non-numeric feature */
+        fclose(f);
+    }
+
+    Dataset *ds = dataset_load_csv(path);
+    if (ds != NULL) {
+        TEST_FAIL("Should return NULL for non-numeric feature");
+        dataset_free(&ds);
+        remove(path);
+        return;
+    }
+
+    remove(path);
+    TEST_PASS();
+}
+
+static void test_incorrect_column_count(void)
+{
+    TEST_BEGIN("Incorrect column count handling");
+
+    char path[] = "test_wrong_cols.csv";
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "feat1,feat2,label\n");
+        fprintf(f, "1.0,2.0,0\n");
+        fprintf(f, "3.0,4.0\n"); /* missing label column */
+        fclose(f);
+    }
+
+    Dataset *ds = dataset_load_csv(path);
+    if (ds != NULL) {
+        TEST_FAIL("Should return NULL for wrong column count");
+        dataset_free(&ds);
+        remove(path);
+        return;
+    }
+
+    remove(path);
+    TEST_PASS();
+}
+
+static void test_large_dataset(void)
+{
+    TEST_BEGIN("Large dataset handling (5000 rows)");
+
+    char path[] = "test_large.csv";
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        TEST_FAIL("Could not create large fixture");
+        return;
+    }
+    fprintf(f, "feat1,feat2,feat3,label\n");
+    for (int i = 0; i < 5000; i++) {
+        fprintf(f, "%d,%d,%d,%d\n", i % 10, i % 50, i % 8, (i % 2));
+    }
+    fclose(f);
+
+    Dataset *ds = dataset_load_csv(path);
+    remove(path);
+
+    if (!ds) {
+        TEST_FAIL("Failed to load large dataset");
+        return;
+    }
+
+    if (ds->num_samples != 5000) {
+        TEST_FAIL("Expected 5000 samples");
+        dataset_free(&ds);
+        return;
+    }
+    if (ds->num_features != 3) {
+        TEST_FAIL("Expected 3 features");
+        dataset_free(&ds);
+        return;
+    }
+
+    /* Memory estimate must scale with samples*features. */
+    size_t min_expected = (size_t)ds->num_samples * ds->num_features * sizeof(float);
+    if (dataset_estimate_memory(ds) < min_expected) {
+        TEST_FAIL("Memory estimate too low for large dataset");
+        dataset_free(&ds);
+        return;
+    }
+
+    dataset_free(&ds);
+    TEST_PASS();
+}
+
 static void test_create_free_cycle(void)
 {
     TEST_BEGIN("Create and free cycle");
@@ -451,6 +548,8 @@ int main(void)
     test_empty_file();
     test_header_only();
     test_malformed_row();
+    test_invalid_number();
+    test_incorrect_column_count();
     test_invalid_label();
     test_dataset_cleanup();
     test_double_free_safety();
@@ -459,6 +558,7 @@ int main(void)
     test_split_preserves_data();
     test_reproducible_split();
     test_memory_estimation();
+    test_large_dataset();
     test_create_free_cycle();
 
     printf("\n----------------------------------------\n");

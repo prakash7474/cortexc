@@ -456,6 +456,126 @@ static void test_model_print_info(void)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Test: invalid feature count                                         */
+/* ------------------------------------------------------------------ */
+
+static void test_model_load_zero_features(void)
+{
+    TEST_BEGIN("model_load with zero feature count");
+
+    const char *path = "build/test_zero_features.bin";
+    FILE *fp = fopen(path, "wb");
+    if (!fp) { TEST_FAIL("Failed to create fixture"); return; }
+
+    ModelFileHeader header;
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, MODEL_MAGIC, MODEL_MAGIC_LEN);
+    header.format_version = MODEL_FORMAT_VERSION;
+    header.feature_count  = 0;
+    header.learning_rate  = 0.1f;
+    header.epochs         = 10;
+    fwrite(&header, sizeof(header), 1, fp);
+    fclose(fp);
+
+    Perceptron *loaded = NULL;
+    Scaler scaler = {0};
+    int rc = model_load(path, &loaded, &scaler);
+    scaler_free(&scaler);
+    remove(path);
+
+    if (rc != -1) {
+        TEST_FAIL("Should reject model with zero features");
+        return;
+    }
+    if (loaded != NULL) {
+        TEST_FAIL("model_out must be NULL on failure");
+        perceptron_free(&loaded);
+        return;
+    }
+    TEST_PASS();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Test: unsupported version                                          */
+/* ------------------------------------------------------------------ */
+
+static void test_model_load_bad_version(void)
+{
+    TEST_BEGIN("model_load with unsupported version");
+
+    const char *path = "build/test_badver.bin";
+    FILE *fp = fopen(path, "wb");
+    if (!fp) { TEST_FAIL("Failed to create fixture"); return; }
+
+    ModelFileHeader header;
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, MODEL_MAGIC, MODEL_MAGIC_LEN);
+    header.format_version = MODEL_FORMAT_VERSION + 1; /* unsupported */
+    header.feature_count  = 3;
+    header.learning_rate  = 0.1f;
+    header.epochs         = 10;
+    fwrite(&header, sizeof(header), 1, fp);
+    fclose(fp);
+
+    Perceptron *loaded = NULL;
+    Scaler scaler = {0};
+    int rc = model_load(path, &loaded, &scaler);
+    scaler_free(&scaler);
+    remove(path);
+
+    if (rc != -1) {
+        TEST_FAIL("Should reject unsupported version");
+        return;
+    }
+    if (loaded != NULL) {
+        TEST_FAIL("model_out must be NULL on failure");
+        perceptron_free(&loaded);
+        return;
+    }
+    TEST_PASS();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Test: truncated file                                              */
+/* ------------------------------------------------------------------ */
+
+static void test_model_load_truncated(void)
+{
+    TEST_BEGIN("model_load with truncated file");
+
+    const char *path = "build/test_trunc2.bin";
+    FILE *fp = fopen(path, "wb");
+    if (!fp) { TEST_FAIL("Failed to create fixture"); return; }
+
+    ModelFileHeader header;
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, MODEL_MAGIC, MODEL_MAGIC_LEN);
+    header.format_version = MODEL_FORMAT_VERSION;
+    header.feature_count  = 3;
+    header.learning_rate  = 0.1f;
+    header.epochs         = 10;
+    fwrite(&header, sizeof(header), 1, fp);
+    fclose(fp); /* no weight data follows */
+
+    Perceptron *loaded = NULL;
+    Scaler scaler = {0};
+    int rc = model_load(path, &loaded, &scaler);
+    scaler_free(&scaler);
+    remove(path);
+
+    if (rc != -1) {
+        TEST_FAIL("Should reject truncated file");
+        return;
+    }
+    if (loaded != NULL) {
+        TEST_FAIL("model_out must be NULL on failure");
+        perceptron_free(&loaded);
+        return;
+    }
+    TEST_PASS();
+}
+
+/* ------------------------------------------------------------------ */
 /*  Test 8: Null argument safety                                       */
 /* ------------------------------------------------------------------ */
 
@@ -513,6 +633,9 @@ int main(void)
     test_model_save_load_roundtrip();
     test_model_load_nonexistent();
     test_model_load_corrupted_magic();
+    test_model_load_zero_features();
+    test_model_load_bad_version();
+    test_model_load_truncated();
     test_model_load_info();
     test_model_info_free_safety();
     test_model_print_info();
