@@ -99,7 +99,7 @@ static void on_dataset_load(GtkWidget *button, gpointer user_data)
     const char *path = gtk_entry_get_text(GTK_ENTRY(app->dataset_path_entry));
     if (!path || path[0] == '\0') {
         gtk_label_set_text(GTK_LABEL(app->dataset_info_label),
-                           "Error: Please enter a dataset path.");
+                           "ERROR: Please enter a dataset path.");
         return;
     }
 
@@ -112,11 +112,11 @@ static void on_dataset_load(GtkWidget *button, gpointer user_data)
     app->current_dataset = dataset_load_csv(path);
     if (!app->current_dataset) {
         gtk_label_set_text(GTK_LABEL(app->dataset_info_label),
-                           "Error: Failed to load dataset.");
+                           "ERROR: Failed to load dataset.");
         return;
     }
 
-    strncpy(app->current_csv_path, path, sizeof(app->current_csv_path) - 1);
+    snprintf(app->current_csv_path, sizeof(app->current_csv_path), "%s", path);
 
     /* Build info string */
     char info[512];
@@ -145,7 +145,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
 
     if (!app->current_dataset) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Load a dataset first.");
+                           "ERROR: Load a dataset first.");
         return;
     }
 
@@ -164,7 +164,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
     if (dataset_split(app->current_dataset, &train_set, &test_set,
                       DEFAULT_TRAIN_RATIO, DEFAULT_RANDOM_SEED) != 0) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Failed to split dataset.");
+                           "ERROR: Failed to split dataset.");
         return;
     }
 
@@ -181,7 +181,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
     Scaler scaler = {0};
     if (scaler_fit(&scaler, train_set) != 0) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Failed to fit scaler.");
+                           "ERROR: Failed to fit scaler.");
         dataset_free(&train_set);
         dataset_free(&test_set);
         return;
@@ -190,7 +190,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
     if (scaler_transform(&scaler, train_set) != 0 ||
         scaler_transform(&scaler, test_set) != 0) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Failed to normalize data.");
+                           "ERROR: Failed to normalize data.");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -206,7 +206,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
                                         (size_t)DEFAULT_MAX_EPOCHS);
     if (!model) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Failed to create perceptron.");
+                           "ERROR: Failed to create perceptron.");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -225,7 +225,7 @@ static void on_train_clicked(GtkWidget *button, gpointer user_data)
     int epochs = perceptron_train(model, train_set);
     if (epochs < 0) {
         gtk_label_set_text(GTK_LABEL(app->train_status_label),
-                           "Error: Training failed.");
+                           "ERROR: Training failed.");
         perceptron_free(&model);
         scaler_free(&scaler);
         dataset_free(&train_set);
@@ -302,7 +302,7 @@ static void on_model_load(GtkWidget *button, gpointer user_data)
     const char *path = gtk_entry_get_text(GTK_ENTRY(app->model_path_entry));
     if (!path || path[0] == '\0') {
         gtk_label_set_text(GTK_LABEL(app->model_info_label),
-                           "Error: Please enter a model path.");
+                           "ERROR: Please enter a model path.");
         return;
     }
 
@@ -314,11 +314,11 @@ static void on_model_load(GtkWidget *button, gpointer user_data)
 
     if (model_load(path, &app->current_model, &app->current_scaler) != 0) {
         gtk_label_set_text(GTK_LABEL(app->model_info_label),
-                           "Error: Failed to load model.");
+                           "ERROR: Failed to load model.");
         return;
     }
 
-    strncpy(app->current_model_path, path, sizeof(app->current_model_path) - 1);
+    snprintf(app->current_model_path, sizeof(app->current_model_path), "%s", path);
 
     /* Build info string */
     char info[512];
@@ -345,7 +345,7 @@ static void on_model_save(GtkWidget *button, gpointer user_data)
 
     if (!app->current_model) {
         gtk_label_set_text(GTK_LABEL(app->model_info_label),
-                           "Error: No model to save. Train or load one first.");
+                           "ERROR: No model to save. Train or load one first.");
         return;
     }
 
@@ -356,11 +356,11 @@ static void on_model_save(GtkWidget *button, gpointer user_data)
 
     if (model_save(path, app->current_model, &app->current_scaler) != 0) {
         gtk_label_set_text(GTK_LABEL(app->model_info_label),
-                           "Error: Failed to save model.");
+                           "ERROR: Failed to save model.");
         return;
     }
 
-    strncpy(app->current_model_path, path, sizeof(app->current_model_path) - 1);
+    snprintf(app->current_model_path, sizeof(app->current_model_path), "%s", path);
 
     char msg[256];
     snprintf(msg, sizeof(msg), "Model saved to: %s", path);
@@ -378,14 +378,14 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
 
     if (!app->current_model) {
         gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                           "Error: No model loaded. Load or train one first.");
+                           "ERROR: No model loaded. Load or train one first.");
         return;
     }
 
     const char *input = gtk_entry_get_text(GTK_ENTRY(app->predict_features_entry));
     if (!input || input[0] == '\0') {
         gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                           "Error: Enter feature values separated by commas.");
+                           "ERROR: Enter feature values separated by commas.");
         return;
     }
 
@@ -395,7 +395,7 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
     float *raw = malloc(expected * sizeof(float));
     if (!raw) {
         gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                           "Error: Memory allocation failed.");
+                           "ERROR: Memory allocation failed.");
         return;
     }
 
@@ -403,7 +403,7 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
     if (!buffer) {
         free(raw);
         gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                           "Error: Memory allocation failed.");
+                           "ERROR: Memory allocation failed.");
         return;
     }
 
@@ -416,7 +416,7 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
             free(buffer);
             free(raw);
             gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                               "Error: Invalid feature value.");
+                               "ERROR: Invalid feature value.");
             return;
         }
         count++;
@@ -428,7 +428,7 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
     if (count != expected) {
         free(raw);
         char msg[128];
-        snprintf(msg, sizeof(msg), "Error: Expected %zu features, got %zu.",
+        snprintf(msg, sizeof(msg), "ERROR: Expected %zu features, got %zu.",
                  expected, count);
         gtk_label_set_text(GTK_LABEL(app->predict_result_label), msg);
         return;
@@ -439,7 +439,7 @@ static void on_predict_clicked(GtkWidget *button, gpointer user_data)
     if (!norm) {
         free(raw);
         gtk_label_set_text(GTK_LABEL(app->predict_result_label),
-                           "Error: Memory allocation failed.");
+                           "ERROR: Memory allocation failed.");
         return;
     }
 

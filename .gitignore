@@ -1,8 +1,10 @@
 # Build artifacts
 build/
+bin/
 *.o
 *.obj
 *.exe
+*.out
 *.dll
 *.so
 *.dylib
@@ -24,5 +26,8 @@ Thumbs.db
 # Model files (generated)
 models/*.bin
 
-# Valgrind output
+# Temporary / generated test artifacts
+results.csv
 *.valgrind
+
+# Leave source code tracked; only ignore generated outputs.

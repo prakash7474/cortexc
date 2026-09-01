@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "config.h"
 #include "dataset.h"
@@ -29,27 +30,41 @@
 #define DEFAULT_MODEL_PATH "models/student_model.bin"
 
 /* ------------------------------------------------------------------ */
-/*  Help / Usage                                                       */
+/*  Help / Usage / Version                                             */
 /* ------------------------------------------------------------------ */
+
+static void print_version(void)
+{
+    printf("%s version %s\n", PROJECT_NAME, CORTEXC_VERSION);
+    printf("%s\n", PROJECT_DESCRIPTION);
+    printf("Single-layer perceptron\n");
+}
 
 static void print_usage(void)
 {
     printf("========================================\n");
-    printf("             CortexC\n");
-    printf("      CPU-ONLY ML ENGINE\n");
+    printf("             %s\n", PROJECT_NAME);
+    printf("      %s\n", PROJECT_DESCRIPTION);
     printf("========================================\n\n");
     printf("Usage:\n");
-    printf("  cortexc train <dataset.csv>              Train a model and save it\n");
-    printf("  cortexc predict <model.bin> <f1> ...     Predict using a saved model\n");
-    printf("  cortexc predict-batch <model.bin> <csv>  Batch predict from CSV file\n");
-    printf("  cortexc info <model.bin>                 Display model information\n");
-    printf("  cortexc                                  Show this help\n");
-    printf("\n");
+    printf("  cortexc <command> [options]\n\n");
+    printf("Commands:\n");
+    printf("  train <dataset.csv>                Train a model and save it\n");
+    printf("  predict <model.bin> <f1> ...       Predict using a saved model\n");
+    printf("  predict-batch <model.bin> <csv>    Batch predict from CSV file\n");
+    printf("                                     [--output <results.csv>]\n");
+    printf("  info <model.bin>                   Display model information\n");
+    printf("  help                               Show this help\n");
+    printf("  version                            Show version information\n\n");
+    printf("Options:\n");
+    printf("  -h, --help    Show this help\n");
+    printf("  -v, --version Show version information\n\n");
     printf("Examples:\n");
-    printf("  cortexc train data/students.csv\n");
-    printf("  cortexc predict models/student_model.bin 7 85 8\n");
-    printf("  cortexc predict-batch models/student_model.bin data/new_students.csv\n");
-    printf("  cortexc info models/student_model.bin\n");
+    printf("  %s train data/students.csv\n", PROJECT_NAME);
+    printf("  %s predict models/student_model.bin 7 85 8\n", PROJECT_NAME);
+    printf("  %s predict-batch models/student_model.bin data/students.csv\n", PROJECT_NAME);
+    printf("  %s predict-batch models/student_model.bin data/students.csv --output results.csv\n", PROJECT_NAME);
+    printf("  %s info models/student_model.bin\n", PROJECT_NAME);
 }
 
 /* ------------------------------------------------------------------ */
@@ -67,7 +82,7 @@ static int cmd_train(const char *csv_path)
 
     Dataset *dataset = dataset_load_csv(csv_path);
     if (!dataset) {
-        fprintf(stderr, "Error: Failed to load dataset '%s'.\n", csv_path);
+        fprintf(stderr, "ERROR: Failed to load dataset '%s'.\n", csv_path);
         return EXIT_FAILURE;
     }
 
@@ -80,7 +95,7 @@ static int cmd_train(const char *csv_path)
 
     if (dataset_split(dataset, &train_set, &test_set,
                       DEFAULT_TRAIN_RATIO, DEFAULT_RANDOM_SEED) != 0) {
-        fprintf(stderr, "Error: Failed to split dataset.\n");
+        fprintf(stderr, "ERROR: Failed to split dataset.\n");
         dataset_free(&dataset);
         return EXIT_FAILURE;
     }
@@ -92,7 +107,7 @@ static int cmd_train(const char *csv_path)
     Scaler scaler = {0};
 
     if (scaler_fit(&scaler, train_set) != 0) {
-        fprintf(stderr, "Error: Failed to fit scaler.\n");
+        fprintf(stderr, "ERROR: Failed to fit scaler.\n");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -102,7 +117,7 @@ static int cmd_train(const char *csv_path)
 
     /* Step 4: Transform training data */
     if (scaler_transform(&scaler, train_set) != 0) {
-        fprintf(stderr, "Error: Failed to transform training data.\n");
+        fprintf(stderr, "ERROR: Failed to transform training data.\n");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -112,7 +127,7 @@ static int cmd_train(const char *csv_path)
 
     /* Step 5: Transform testing data */
     if (scaler_transform(&scaler, test_set) != 0) {
-        fprintf(stderr, "Error: Failed to transform testing data.\n");
+        fprintf(stderr, "ERROR: Failed to transform testing data.\n");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -132,7 +147,7 @@ static int cmd_train(const char *csv_path)
                                         DEFAULT_LEARNING_RATE,
                                         (size_t)DEFAULT_MAX_EPOCHS);
     if (!model) {
-        fprintf(stderr, "Error: Failed to create perceptron.\n");
+        fprintf(stderr, "ERROR: Failed to create perceptron.\n");
         scaler_free(&scaler);
         dataset_free(&train_set);
         dataset_free(&test_set);
@@ -143,7 +158,7 @@ static int cmd_train(const char *csv_path)
     /* Step 7: Train perceptron */
     int epochs = perceptron_train(model, train_set);
     if (epochs < 0) {
-        fprintf(stderr, "Error: Training failed.\n");
+        fprintf(stderr, "ERROR: Training failed.\n");
         perceptron_free(&model);
         scaler_free(&scaler);
         dataset_free(&train_set);
@@ -157,7 +172,7 @@ static int cmd_train(const char *csv_path)
     /* Step 8: Evaluate on test set */
     int *predictions = predict_dataset(model, test_set);
     if (!predictions) {
-        fprintf(stderr, "Error: Prediction failed.\n");
+        fprintf(stderr, "ERROR: Prediction failed.\n");
         perceptron_free(&model);
         scaler_free(&scaler);
         dataset_free(&train_set);
@@ -168,7 +183,7 @@ static int cmd_train(const char *csv_path)
 
     int *actuals = malloc(test_set->num_samples * sizeof(int));
     if (!actuals) {
-        fprintf(stderr, "Error: Memory allocation failed.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
         free(predictions);
         perceptron_free(&model);
         scaler_free(&scaler);
@@ -204,7 +219,7 @@ static int cmd_train(const char *csv_path)
     printf("----------------------------------------\n\n");
 
     if (model_save(DEFAULT_MODEL_PATH, model, &scaler) != 0) {
-        fprintf(stderr, "Error: Failed to save model to '%s'.\n",
+        fprintf(stderr, "ERROR: Failed to save model to '%s'.\n",
                 DEFAULT_MODEL_PATH);
         free(predictions);
         free(actuals);
@@ -244,7 +259,7 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
     /* Load model */
     ModelInfo info = {0};
     if (model_load_info(model_path, &info) != 0) {
-        fprintf(stderr, "Error: Failed to load model from '%s'.\n", model_path);
+        fprintf(stderr, "ERROR: Failed to load model from '%s'.\n", model_path);
         return EXIT_FAILURE;
     }
 
@@ -256,7 +271,7 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
     size_t provided = (size_t)argc;
 
     if (provided != expected) {
-        fprintf(stderr, "Error: Expected %zu feature values, got %zu.\n",
+        fprintf(stderr, "ERROR: Expected %zu feature values, got %zu.\n",
                 expected, provided);
         fprintf(stderr, "Usage: cortexc predict <model.bin> <f1> <f2> ... <f%zu>\n",
                 expected);
@@ -267,7 +282,7 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
     /* Parse raw input features */
     float *raw_features = malloc(expected * sizeof(float));
     if (!raw_features) {
-        fprintf(stderr, "Error: Memory allocation failed.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
         model_info_free(&info);
         return EXIT_FAILURE;
     }
@@ -275,8 +290,8 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
     for (size_t i = 0; i < expected; i++) {
         char *endptr = NULL;
         float val = strtof(argv[i], &endptr);
-        if (endptr == argv[i] || *endptr != '\0') {
-            fprintf(stderr, "Error: Invalid feature value '%s' at position %zu.\n",
+        if (endptr == argv[i] || *endptr != '\0' || !isfinite(val)) {
+            fprintf(stderr, "ERROR: Invalid feature value '%s' at position %zu.\n",
                     argv[i], i + 1);
             free(raw_features);
             model_info_free(&info);
@@ -288,7 +303,7 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
     /* Normalize using model's stored scaler */
     float *norm_features = malloc(expected * sizeof(float));
     if (!norm_features) {
-        fprintf(stderr, "Error: Memory allocation failed.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
         free(raw_features);
         model_info_free(&info);
         return EXIT_FAILURE;
@@ -327,58 +342,8 @@ static int cmd_predict(const char *model_path, int argc, const char **argv)
 /*  Command: predict-batch                                             */
 /* ------------------------------------------------------------------ */
 
-/**
- * skip_whitespace - Advance pointer past leading whitespace.
- */
-static const char *skip_whitespace(const char *s)
-{
-    while (*s == ' ' || *s == '\t' || *s == '\r') s++;
-    return s;
-}
-
-/**
- * parse_csv_line - Parse a comma-separated line into float array.
- *
- * Skips leading/trailing whitespace around each token.
- * Returns number of values parsed, or -1 on parse error.
- */
-static int parse_csv_line(const char *line, float *out, size_t max_count)
-{
-    size_t count = 0;
-    const char *p = line;
-
-    /* Skip leading whitespace / blank lines */
-    p = skip_whitespace(p);
-    if (*p == '\0' || *p == '\n' || *p == '\r') {
-        return 0;
-    }
-
-    while (*p != '\0' && *p != '\n' && *p != '\r') {
-        if (count >= max_count) {
-            return -1;
-        }
-
-        char *endptr = NULL;
-        float val = strtof(p, &endptr);
-        if (endptr == p) {
-            return -1; /* Failed to parse a number */
-        }
-
-        out[count++] = val;
-
-        /* Skip to next comma or end */
-        p = endptr;
-        p = skip_whitespace(p);
-        if (*p == ',') {
-            p++;
-            p = skip_whitespace(p);
-        }
-    }
-
-    return (int)count;
-}
-
-static int cmd_predict_batch(const char *model_path, const char *csv_path)
+static int cmd_predict_batch(const char *model_path, const char *csv_path,
+                             const char *out_csv_path)
 {
     printf("========================================\n");
     printf("  BATCH PREDICTION\n");
@@ -387,123 +352,19 @@ static int cmd_predict_batch(const char *model_path, const char *csv_path)
     /* Load model */
     ModelInfo info = {0};
     if (model_load_info(model_path, &info) != 0) {
-        fprintf(stderr, "Error: Failed to load model from '%s'.\n", model_path);
+        fprintf(stderr, "ERROR: Failed to load model from '%s'.\n", model_path);
         return EXIT_FAILURE;
     }
 
-    size_t expected = info.perceptron->feature_count;
     printf("Loaded model: %s\n", model_path);
-    printf("Features expected: %zu\n", expected);
+    printf("Input file:   %s\n", csv_path);
 
-    /* Open input CSV */
-    FILE *fp = fopen(csv_path, "r");
-    if (!fp) {
-        fprintf(stderr, "Error: Cannot open '%s'.\n", csv_path);
+    int n = predict_batch(info.perceptron, &info.scaler,
+                          csv_path, out_csv_path);
+    if (n < 0) {
         model_info_free(&info);
         return EXIT_FAILURE;
     }
-
-    printf("Input file:   %s\n\n", csv_path);
-
-    /* Read first line — auto-detect header */
-    char line[MAX_LINE_LENGTH];
-    float first_row[MAX_FEATURES];
-
-    if (!fgets(line, sizeof(line), fp)) {
-        fprintf(stderr, "Error: Input file is empty.\n");
-        fclose(fp);
-        model_info_free(&info);
-        return EXIT_FAILURE;
-    }
-
-    int first_count = parse_csv_line(line, first_row, expected);
-
-    /* If first row doesn't parse as numbers, treat it as a header and skip */
-    int has_header = 0;
-    if (first_count < 0 || first_count != (int)expected) {
-        has_header = 1;
-        printf("(Skipping header row)\n\n");
-    }
-
-    /* Print result header */
-    printf("%-5s", "Row");
-    for (size_t i = 0; i < expected; i++) {
-        printf("  %12s", "Feature");
-    }
-    printf("  %10s\n", "Prediction");
-
-    printf("%-5s", "----");
-    for (size_t i = 0; i < expected; i++) {
-        printf("  ------------");
-    }
-    printf("  ----------\n");
-
-    /* Process rows */
-    size_t row_num = 0;
-    int pass_count = 0;
-    int fail_count = 0;
-
-    /* If not a header, we already parsed the first row */
-    if (!has_header) {
-        /* first_row already has data, first_count == expected */
-        /* Normalize */
-        float norm[MAX_FEATURES];
-        for (size_t i = 0; i < expected; i++) {
-            float range = info.scaler.max_values[i] - info.scaler.min_values[i];
-            norm[i] = (range < 1e-9f) ? 0.0f
-                      : (first_row[i] - info.scaler.min_values[i]) / range;
-        }
-
-        int pred = perceptron_predict(info.perceptron, norm);
-        if (pred) pass_count++; else fail_count++;
-        row_num++;
-
-        printf("%-5zu", row_num);
-        for (size_t i = 0; i < expected; i++) {
-            printf("  %12.2f", first_row[i]);
-        }
-        printf("  %10s\n", pred ? "PASS" : "FAIL");
-    }
-
-    /* Process remaining lines */
-    while (fgets(line, sizeof(line), fp)) {
-        float features[MAX_FEATURES];
-        int count = parse_csv_line(line, features, expected);
-
-        if (count <= 0) {
-            continue; /* Skip blank or unparseable lines */
-        }
-
-        if (count != (int)expected) {
-            fprintf(stderr, "Warning: Row %zu has %d features, expected %zu. Skipping.\n",
-                    row_num + 1, count, expected);
-            continue;
-        }
-
-        /* Normalize */
-        float norm[MAX_FEATURES];
-        for (size_t i = 0; i < expected; i++) {
-            float range = info.scaler.max_values[i] - info.scaler.min_values[i];
-            norm[i] = (range < 1e-9f) ? 0.0f
-                      : (features[i] - info.scaler.min_values[i]) / range;
-        }
-
-        int pred = perceptron_predict(info.perceptron, norm);
-        if (pred) pass_count++; else fail_count++;
-        row_num++;
-
-        printf("%-5zu", row_num);
-        for (size_t i = 0; i < expected; i++) {
-            printf("  %12.2f", features[i]);
-        }
-        printf("  %10s\n", pred ? "PASS" : "FAIL");
-    }
-
-    fclose(fp);
-
-    printf("\n----------------------------------------\n");
-    printf("Total: %zu rows  |  PASS: %d  |  FAIL: %d\n", row_num, pass_count, fail_count);
-    printf("----------------------------------------\n");
 
     model_info_free(&info);
     return EXIT_SUCCESS;
@@ -517,7 +378,7 @@ static int cmd_info(const char *model_path)
 {
     ModelInfo info = {0};
     if (model_load_info(model_path, &info) != 0) {
-        fprintf(stderr, "Error: Failed to load model from '%s'.\n", model_path);
+        fprintf(stderr, "ERROR: Failed to load model from '%s'.\n", model_path);
         return EXIT_FAILURE;
     }
 
@@ -541,10 +402,23 @@ int main(int argc, char *argv[])
 
     const char *command = argv[1];
 
+    /* help / version flags */
+    if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0 ||
+        strcmp(command, "help") == 0) {
+        print_usage();
+        return EXIT_SUCCESS;
+    }
+
+    if (strcmp(command, "--version") == 0 || strcmp(command, "-v") == 0 ||
+        strcmp(command, "version") == 0) {
+        print_version();
+        return EXIT_SUCCESS;
+    }
+
     /* train command */
     if (strcmp(command, "train") == 0) {
         if (argc < 3) {
-            fprintf(stderr, "Error: 'train' requires a dataset path.\n");
+            fprintf(stderr, "ERROR: 'train' requires a dataset path.\n");
             fprintf(stderr, "Usage: cortexc train <dataset.csv>\n");
             return EXIT_FAILURE;
         }
@@ -554,7 +428,7 @@ int main(int argc, char *argv[])
     /* predict command */
     if (strcmp(command, "predict") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Error: 'predict' requires a model path and feature values.\n");
+            fprintf(stderr, "ERROR: 'predict' requires a model path and feature values.\n");
             fprintf(stderr, "Usage: cortexc predict <model.bin> <f1> <f2> ... <fn>\n");
             return EXIT_FAILURE;
         }
@@ -564,17 +438,32 @@ int main(int argc, char *argv[])
     /* predict-batch command */
     if (strcmp(command, "predict-batch") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Error: 'predict-batch' requires a model path and a CSV file.\n");
+            fprintf(stderr, "ERROR: 'predict-batch' requires a model path and a CSV file.\n");
             fprintf(stderr, "Usage: cortexc predict-batch <model.bin> <input.csv>\n");
+            fprintf(stderr, "                         [--output <results.csv>]\n");
             return EXIT_FAILURE;
         }
-        return cmd_predict_batch(argv[2], argv[3]);
+
+        /* Optional --output flag: search argv[4..] for "--output" */
+        const char *out_csv_path = NULL;
+        for (int i = 4; i < argc; i++) {
+            if (strcmp(argv[i], "--output") == 0) {
+                if (i + 1 >= argc) {
+                    fprintf(stderr, "ERROR: '--output' requires a file path.\n");
+                    return EXIT_FAILURE;
+                }
+                out_csv_path = argv[i + 1];
+                break;
+            }
+        }
+
+        return cmd_predict_batch(argv[2], argv[3], out_csv_path);
     }
 
     /* info command */
     if (strcmp(command, "info") == 0) {
         if (argc < 3) {
-            fprintf(stderr, "Error: 'info' requires a model path.\n");
+            fprintf(stderr, "ERROR: 'info' requires a model path.\n");
             fprintf(stderr, "Usage: cortexc info <model.bin>\n");
             return EXIT_FAILURE;
         }
@@ -582,7 +471,7 @@ int main(int argc, char *argv[])
     }
 
     /* Unknown command */
-    fprintf(stderr, "Error: Unknown command '%s'.\n\n", command);
+    fprintf(stderr, "ERROR: Unknown command '%s'.\n\n", command);
     print_usage();
     return EXIT_FAILURE;
 }

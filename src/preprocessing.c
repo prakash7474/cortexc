@@ -14,16 +14,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
+#include <math.h>
 
 int scaler_fit(Scaler *scaler, const struct Dataset *dataset)
 {
     if (!scaler || !dataset) {
-        fprintf(stderr, "Error: NULL argument to scaler_fit.\n");
+        fprintf(stderr, "ERROR: NULL argument to scaler_fit.\n");
         return -1;
     }
 
     if (dataset->num_samples == 0) {
-        fprintf(stderr, "Error: Cannot fit scaler on empty dataset.\n");
+        fprintf(stderr, "ERROR: Cannot fit scaler on empty dataset.\n");
         return -1;
     }
 
@@ -33,7 +34,7 @@ int scaler_fit(Scaler *scaler, const struct Dataset *dataset)
     scaler->min_values = malloc(nf * sizeof(float));
     scaler->max_values = malloc(nf * sizeof(float));
     if (!scaler->min_values || !scaler->max_values) {
-        fprintf(stderr, "Error: Memory allocation failed for scaler.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for scaler.\n");
         free(scaler->min_values);
         free(scaler->max_values);
         scaler->min_values = NULL;
@@ -53,6 +54,17 @@ int scaler_fit(Scaler *scaler, const struct Dataset *dataset)
     for (size_t i = 0; i < dataset->num_samples; i++) {
         const float *features = dataset->samples[i].features;
         for (size_t f = 0; f < nf; f++) {
+            /* Reject non-finite values so NaN/Inf cannot poison the scaler. */
+            if (!isfinite(features[f])) {
+                fprintf(stderr, "ERROR: Non-finite feature value at sample %zu, "
+                                "feature %zu.\n", i, f);
+                free(scaler->min_values);
+                free(scaler->max_values);
+                scaler->min_values = NULL;
+                scaler->max_values = NULL;
+                scaler->num_features = 0;
+                return -1;
+            }
             if (features[f] < scaler->min_values[f]) {
                 scaler->min_values[f] = features[f];
             }
@@ -68,12 +80,12 @@ int scaler_fit(Scaler *scaler, const struct Dataset *dataset)
 int scaler_transform(const Scaler *scaler, struct Dataset *dataset)
 {
     if (!scaler || !dataset) {
-        fprintf(stderr, "Error: NULL argument to scaler_transform.\n");
+        fprintf(stderr, "ERROR: NULL argument to scaler_transform.\n");
         return -1;
     }
 
     if (scaler->num_features != dataset->num_features) {
-        fprintf(stderr, "Error: Feature count mismatch (scaler=%zu, dataset=%zu).\n",
+        fprintf(stderr, "ERROR: Feature count mismatch (scaler=%zu, dataset=%zu).\n",
                 scaler->num_features, dataset->num_features);
         return -1;
     }

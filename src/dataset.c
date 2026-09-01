@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 /* Initial capacity for dynamic growth */
 #define INITIAL_CAPACITY 16
@@ -80,8 +81,7 @@ static int parse_row(const char *line, size_t expected_features,
                      float *out_features, int *out_label)
 {
     char buffer[MAX_LINE_LENGTH];
-    strncpy(buffer, line, sizeof(buffer) - 1);
-    buffer[sizeof(buffer) - 1] = '\0';
+    snprintf(buffer, sizeof(buffer), "%s", line);
 
     /* Remove trailing newline/carriage return */
     size_t len = strlen(buffer);
@@ -111,7 +111,7 @@ static int parse_row(const char *line, size_t expected_features,
         char *trimmed = trim_whitespace(token);
         char *endptr = NULL;
         float val = strtof(trimmed, &endptr);
-        if (endptr == trimmed || *endptr != '\0') {
+        if (endptr == trimmed || *endptr != '\0' || !isfinite(val)) {
             return -1;
         }
         out_features[i] = val;
@@ -158,13 +158,13 @@ Dataset *dataset_create(void)
 {
     Dataset *ds = calloc(1, sizeof(Dataset));
     if (!ds) {
-        fprintf(stderr, "Error: Failed to allocate Dataset structure.\n");
+        fprintf(stderr, "ERROR: Failed to allocate Dataset structure.\n");
         return NULL;
     }
 
     ds->samples = calloc(INITIAL_CAPACITY, sizeof(Sample));
     if (!ds->samples) {
-        fprintf(stderr, "Error: Failed to allocate initial sample array.\n");
+        fprintf(stderr, "ERROR: Failed to allocate initial sample array.\n");
         free(ds);
         return NULL;
     }
@@ -181,13 +181,13 @@ Dataset *dataset_create(void)
 Dataset *dataset_load_csv(const char *filepath)
 {
     if (!filepath) {
-        fprintf(stderr, "Error: NULL file path.\n");
+        fprintf(stderr, "ERROR: NULL file path.\n");
         return NULL;
     }
 
     FILE *file = fopen(filepath, "r");
     if (!file) {
-        fprintf(stderr, "Error: Cannot open file '%s'.\n", filepath);
+        fprintf(stderr, "ERROR: Cannot open file '%s'.\n", filepath);
         return NULL;
     }
 
@@ -197,14 +197,13 @@ Dataset *dataset_load_csv(const char *filepath)
         return NULL;
     }
 
-    strncpy(ds->source_file, filepath, sizeof(ds->source_file) - 1);
-    ds->source_file[sizeof(ds->source_file) - 1] = '\0';
+    snprintf(ds->source_file, sizeof(ds->source_file), "%s", filepath);
 
     char line[MAX_LINE_LENGTH];
 
     /* --- Read and validate header line --- */
     if (!fgets(line, sizeof(line), file)) {
-        fprintf(stderr, "Error: File '%s' is empty.\n", filepath);
+        fprintf(stderr, "ERROR: File '%s' is empty.\n", filepath);
         dataset_free(&ds);
         fclose(file);
         return NULL;
@@ -217,7 +216,7 @@ Dataset *dataset_load_csv(const char *filepath)
     }
 
     if (hlen == 0) {
-        fprintf(stderr, "Error: File '%s' has an empty header.\n", filepath);
+        fprintf(stderr, "ERROR: File '%s' has an empty header.\n", filepath);
         dataset_free(&ds);
         fclose(file);
         return NULL;
@@ -225,7 +224,7 @@ Dataset *dataset_load_csv(const char *filepath)
 
     size_t total_columns = count_columns(line);
     if (total_columns < 2) {
-        fprintf(stderr, "Error: Header must have at least 1 feature + 1 label column.\n");
+        fprintf(stderr, "ERROR: Header must have at least 1 feature + 1 label column.\n");
         dataset_free(&ds);
         fclose(file);
         return NULL;
@@ -235,7 +234,7 @@ Dataset *dataset_load_csv(const char *filepath)
     ds->num_features = total_columns - 1;
 
     if (ds->num_features > MAX_FEATURES) {
-        fprintf(stderr, "Error: Too many features (%zu). Maximum is %d.\n",
+        fprintf(stderr, "ERROR: Too many features (%zu). Maximum is %d.\n",
                 ds->num_features, MAX_FEATURES);
         dataset_free(&ds);
         fclose(file);
@@ -261,7 +260,7 @@ Dataset *dataset_load_csv(const char *filepath)
         /* Grow if needed */
         if (ds->num_samples >= ds->capacity) {
             if (grow_dataset(ds) != 0) {
-                fprintf(stderr, "Error: Memory allocation failed at row %zu.\n", row_num);
+                fprintf(stderr, "ERROR: Memory allocation failed at row %zu.\n", row_num);
                 dataset_free(&ds);
                 fclose(file);
                 return NULL;
@@ -273,7 +272,7 @@ Dataset *dataset_load_csv(const char *filepath)
         /* Allocate feature array */
         s->features = malloc(ds->num_features * sizeof(float));
         if (!s->features) {
-            fprintf(stderr, "Error: Memory allocation failed for features at row %zu.\n",
+            fprintf(stderr, "ERROR: Memory allocation failed for features at row %zu.\n",
                     row_num);
             dataset_free(&ds);
             fclose(file);
@@ -282,7 +281,7 @@ Dataset *dataset_load_csv(const char *filepath)
 
         /* Parse the row */
         if (parse_row(line, ds->num_features, s->features, &s->label) != 0) {
-            fprintf(stderr, "Error: Malformed data at row %zu in '%s'.\n",
+            fprintf(stderr, "ERROR: Malformed data at row %zu in '%s'.\n",
                     row_num, filepath);
             free(s->features);
             s->features = NULL;
@@ -293,7 +292,7 @@ Dataset *dataset_load_csv(const char *filepath)
 
         /* Validate label is 0 or 1 */
         if (s->label != 0 && s->label != 1) {
-            fprintf(stderr, "Error: Invalid label %d at row %zu. Expected 0 or 1.\n",
+            fprintf(stderr, "ERROR: Invalid label %d at row %zu. Expected 0 or 1.\n",
                     s->label, row_num);
             free(s->features);
             s->features = NULL;
@@ -312,7 +311,7 @@ Dataset *dataset_load_csv(const char *filepath)
 
     /* Validate we got some data */
     if (ds->num_samples == 0) {
-        fprintf(stderr, "Error: No data rows found in '%s'.\n", filepath);
+        fprintf(stderr, "ERROR: No data rows found in '%s'.\n", filepath);
         dataset_free(&ds);
         return NULL;
     }
@@ -370,17 +369,17 @@ int dataset_split(const Dataset *original,
                   unsigned int seed)
 {
     if (!original || !train_out || !test_out) {
-        fprintf(stderr, "Error: NULL argument to dataset_split.\n");
+        fprintf(stderr, "ERROR: NULL argument to dataset_split.\n");
         return -1;
     }
 
     if (train_ratio <= 0.0f || train_ratio >= 1.0f) {
-        fprintf(stderr, "Error: train_ratio must be between 0 and 1 (exclusive).\n");
+        fprintf(stderr, "ERROR: train_ratio must be between 0 and 1 (exclusive).\n");
         return -1;
     }
 
     if (original->num_samples == 0) {
-        fprintf(stderr, "Error: Cannot split an empty dataset.\n");
+        fprintf(stderr, "ERROR: Cannot split an empty dataset.\n");
         return -1;
     }
 
@@ -388,10 +387,22 @@ int dataset_split(const Dataset *original,
     size_t train_count = (size_t)((float)total * train_ratio);
     size_t test_count = total - train_count;
 
+    /* Guard against empty train/test splits. */
+    if (train_count == 0) {
+        fprintf(stderr, "ERROR: Train ratio yields an empty training set "
+                        "(%zu samples).\n", total);
+        return -1;
+    }
+    if (test_count == 0) {
+        fprintf(stderr, "ERROR: Train ratio yields an empty testing set "
+                        "(%zu samples).\n", total);
+        return -1;
+    }
+
     /* Create index array [0, 1, 2, ..., total-1] */
     size_t *indices = malloc(total * sizeof(size_t));
     if (!indices) {
-        fprintf(stderr, "Error: Memory allocation failed for shuffle indices.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for shuffle indices.\n");
         return -1;
     }
     for (size_t i = 0; i < total; i++) {
@@ -411,14 +422,14 @@ int dataset_split(const Dataset *original,
     /* Create training dataset */
     *train_out = calloc(1, sizeof(Dataset));
     if (!*train_out) {
-        fprintf(stderr, "Error: Memory allocation failed for training dataset.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for training dataset.\n");
         free(indices);
         return -1;
     }
 
     (*train_out)->samples = calloc(train_count, sizeof(Sample));
     if (!(*train_out)->samples) {
-        fprintf(stderr, "Error: Memory allocation failed for training samples.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for training samples.\n");
         free(*train_out);
         *train_out = NULL;
         free(indices);
@@ -427,13 +438,13 @@ int dataset_split(const Dataset *original,
     (*train_out)->num_features = original->num_features;
     (*train_out)->capacity = train_count;
     (*train_out)->label_count = original->label_count;
-    strncpy((*train_out)->source_file, original->source_file,
-            sizeof((*train_out)->source_file) - 1);
+    snprintf((*train_out)->source_file, sizeof((*train_out)->source_file),
+             "%s", original->source_file);
 
     /* Create testing dataset */
     *test_out = calloc(1, sizeof(Dataset));
     if (!*test_out) {
-        fprintf(stderr, "Error: Memory allocation failed for testing dataset.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for testing dataset.\n");
         dataset_free(train_out);
         free(indices);
         return -1;
@@ -441,7 +452,7 @@ int dataset_split(const Dataset *original,
 
     (*test_out)->samples = calloc(test_count, sizeof(Sample));
     if (!(*test_out)->samples) {
-        fprintf(stderr, "Error: Memory allocation failed for testing samples.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for testing samples.\n");
         dataset_free(train_out);
         dataset_free(test_out);
         free(indices);
@@ -450,8 +461,8 @@ int dataset_split(const Dataset *original,
     (*test_out)->num_features = original->num_features;
     (*test_out)->capacity = test_count;
     (*test_out)->label_count = original->label_count;
-    strncpy((*test_out)->source_file, original->source_file,
-            sizeof((*test_out)->source_file) - 1);
+    snprintf((*test_out)->source_file, sizeof((*test_out)->source_file),
+             "%s", original->source_file);
 
     /* Copy samples into train and test sets */
     size_t ti = 0, vi = 0;
@@ -470,7 +481,7 @@ int dataset_split(const Dataset *original,
         /* Deep copy features */
         dest->features = malloc(original->num_features * sizeof(float));
         if (!dest->features) {
-            fprintf(stderr, "Error: Memory allocation failed during split.\n");
+            fprintf(stderr, "ERROR: Memory allocation failed during split.\n");
             dataset_free(train_out);
             dataset_free(test_out);
             free(indices);

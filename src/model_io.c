@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* ------------------------------------------------------------------ */
 /*  Private helpers                                                     */
@@ -34,7 +35,7 @@ static int write_floats(FILE *fp, const float *data, size_t count)
 {
     size_t written = fwrite(data, sizeof(float), count, fp);
     if (written != count) {
-        fprintf(stderr, "Error: Failed to write float array (wrote %zu of %zu).\n",
+        fprintf(stderr, "ERROR: Failed to write float array (wrote %zu of %zu).\n",
                 written, count);
         return -1;
     }
@@ -49,7 +50,7 @@ static int read_floats(FILE *fp, float *data, size_t count)
 {
     size_t read_count = fread(data, sizeof(float), count, fp);
     if (read_count != count) {
-        fprintf(stderr, "Error: Failed to read float array (read %zu of %zu).\n",
+        fprintf(stderr, "ERROR: Failed to read float array (read %zu of %zu).\n",
                 read_count, count);
         return -1;
     }
@@ -64,34 +65,50 @@ int model_save(const char *filepath, const Perceptron *model,
                const Scaler *scaler)
 {
     if (!filepath || !model || !scaler) {
-        fprintf(stderr, "Error: NULL argument to model_save.\n");
+        fprintf(stderr, "ERROR: NULL argument to model_save.\n");
         return -1;
     }
 
     if (!model->weights) {
-        fprintf(stderr, "Error: Model has NULL weights.\n");
+        fprintf(stderr, "ERROR: Model has NULL weights.\n");
         return -1;
     }
 
     if (model->feature_count == 0) {
-        fprintf(stderr, "Error: Model has zero features.\n");
+        fprintf(stderr, "ERROR: Model has zero features.\n");
         return -1;
     }
 
     if (scaler->num_features != model->feature_count) {
-        fprintf(stderr, "Error: Scaler feature count (%zu) does not match model (%zu).\n",
+        fprintf(stderr, "ERROR: Scaler feature count (%zu) does not match model (%zu).\n",
                 scaler->num_features, model->feature_count);
         return -1;
     }
 
     if (!scaler->min_values || !scaler->max_values) {
-        fprintf(stderr, "Error: Scaler has NULL min/max arrays.\n");
+        fprintf(stderr, "ERROR: Scaler has NULL min/max arrays.\n");
         return -1;
+    }
+
+    /* Refuse to persist non-finite values. */
+    for (size_t i = 0; i < model->feature_count; i++) {
+        if (!isfinite(model->weights[i])) {
+            fprintf(stderr, "ERROR: Cannot save model with non-finite weight "
+                            "at index %zu.\n", i);
+            return -1;
+        }
+    }
+    for (size_t i = 0; i < scaler->num_features; i++) {
+        if (!isfinite(scaler->min_values[i]) || !isfinite(scaler->max_values[i])) {
+            fprintf(stderr, "ERROR: Cannot save model with non-finite scaler "
+                            "bounds at index %zu.\n", i);
+            return -1;
+        }
     }
 
     FILE *fp = fopen(filepath, "wb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open '%s' for writing.\n", filepath);
+        fprintf(stderr, "ERROR: Cannot open '%s' for writing.\n", filepath);
         return -1;
     }
 
@@ -109,7 +126,7 @@ int model_save(const char *filepath, const Perceptron *model,
     /* Write header */
     size_t written = fwrite(&header, sizeof(header), 1, fp);
     if (written != 1) {
-        fprintf(stderr, "Error: Failed to write model header.\n");
+        fprintf(stderr, "ERROR: Failed to write model header.\n");
         fclose(fp);
         return -1;
     }
@@ -142,7 +159,7 @@ int model_load(const char *filepath, Perceptron **model_out,
                Scaler *scaler_out)
 {
     if (!filepath || !model_out || !scaler_out) {
-        fprintf(stderr, "Error: NULL argument to model_load.\n");
+        fprintf(stderr, "ERROR: NULL argument to model_load.\n");
         return -1;
     }
 
@@ -152,7 +169,7 @@ int model_load(const char *filepath, Perceptron **model_out,
 
     FILE *fp = fopen(filepath, "rb");
     if (!fp) {
-        fprintf(stderr, "Error: Cannot open model file '%s'.\n", filepath);
+        fprintf(stderr, "ERROR: Cannot open model file '%s'.\n", filepath);
         return -1;
     }
 
@@ -160,14 +177,14 @@ int model_load(const char *filepath, Perceptron **model_out,
     ModelFileHeader header;
     size_t read_count = fread(&header, sizeof(header), 1, fp);
     if (read_count != 1) {
-        fprintf(stderr, "Error: Failed to read model header from '%s'.\n", filepath);
+        fprintf(stderr, "ERROR: Failed to read model header from '%s'.\n", filepath);
         fclose(fp);
         return -1;
     }
 
     /* Validate magic identifier */
     if (memcmp(header.magic, MODEL_MAGIC, MODEL_MAGIC_LEN) != 0) {
-        fprintf(stderr, "Error: Invalid magic identifier in '%s'. "
+        fprintf(stderr, "ERROR: Invalid magic identifier in '%s'. "
                 "Expected '%s'.\n", filepath, MODEL_MAGIC);
         fclose(fp);
         return -1;
@@ -175,7 +192,7 @@ int model_load(const char *filepath, Perceptron **model_out,
 
     /* Validate format version */
     if (header.format_version != MODEL_FORMAT_VERSION) {
-        fprintf(stderr, "Error: Unsupported format version %u in '%s'. "
+        fprintf(stderr, "ERROR: Unsupported model version %u in '%s'. "
                 "Expected %u.\n", header.format_version, filepath,
                 MODEL_FORMAT_VERSION);
         fclose(fp);
@@ -184,13 +201,13 @@ int model_load(const char *filepath, Perceptron **model_out,
 
     /* Validate feature count */
     if (header.feature_count == 0) {
-        fprintf(stderr, "Error: Model file has zero features.\n");
+        fprintf(stderr, "ERROR: Model file has zero features.\n");
         fclose(fp);
         return -1;
     }
 
     if (header.feature_count > MAX_FEATURES) {
-        fprintf(stderr, "Error: Model file has too many features (%u). "
+        fprintf(stderr, "ERROR: Model file has too many features (%u). "
                 "Maximum is %d.\n", header.feature_count, MAX_FEATURES);
         fclose(fp);
         return -1;
@@ -199,22 +216,32 @@ int model_load(const char *filepath, Perceptron **model_out,
     size_t fc = (size_t)header.feature_count;
 
     /* Validate numeric values */
-    if (header.learning_rate <= 0.0f || header.learning_rate > 1.0f) {
-        fprintf(stderr, "Error: Invalid learning rate %f in model file.\n",
+    if (header.learning_rate <= 0.0f || header.learning_rate > 1.0f ||
+        !isfinite(header.learning_rate)) {
+        fprintf(stderr, "ERROR: Invalid learning rate %f in model file.\n",
                 header.learning_rate);
         fclose(fp);
         return -1;
     }
 
-    if (header.epochs == 0) {
-        fprintf(stderr, "Warning: Model file reports 0 epochs trained.\n");
+    if (!isfinite(header.bias)) {
+        fprintf(stderr, "ERROR: Invalid bias value in model file.\n");
+        fclose(fp);
+        return -1;
     }
+
+    if (header.epochs == 0) {
+        fprintf(stderr, "WARNING: Model file reports 0 epochs trained.\n");
+    }
+
+    /* perceptron_init requires epochs > 0; clamp a reported 0 to 1. */
+    size_t init_epochs = (header.epochs > 0) ? (size_t)header.epochs : 1;
 
     /* Create perceptron with loaded parameters */
     Perceptron *model = perceptron_init(fc, header.learning_rate,
-                                        (size_t)header.epochs);
+                                        init_epochs);
     if (!model) {
-        fprintf(stderr, "Error: Failed to create perceptron from model file.\n");
+        fprintf(stderr, "ERROR: Failed to create perceptron from model file.\n");
         fclose(fp);
         return -1;
     }
@@ -226,7 +253,7 @@ int model_load(const char *filepath, Perceptron **model_out,
     scaler_out->min_values = malloc(fc * sizeof(float));
     scaler_out->max_values = malloc(fc * sizeof(float));
     if (!scaler_out->min_values || !scaler_out->max_values) {
-        fprintf(stderr, "Error: Memory allocation failed for scaler arrays.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for scaler arrays.\n");
         free(scaler_out->min_values);
         free(scaler_out->max_values);
         scaler_out->min_values = NULL;
@@ -260,11 +287,36 @@ int model_load(const char *filepath, Perceptron **model_out,
         return -1;
     }
 
+    /* Validate that all loaded weights are finite. */
+    for (size_t i = 0; i < fc; i++) {
+        if (!isfinite(model->weights[i])) {
+            fprintf(stderr, "ERROR: Model file contains a non-finite weight "
+                            "at index %zu.\n", i);
+            scaler_free(scaler_out);
+            perceptron_free(&model);
+            fclose(fp);
+            return -1;
+        }
+    }
+
+    /* Validate that all loaded scaler bounds are finite. */
+    for (size_t i = 0; i < fc; i++) {
+        if (!isfinite(scaler_out->min_values[i]) ||
+            !isfinite(scaler_out->max_values[i])) {
+            fprintf(stderr, "ERROR: Model file contains non-finite scaler "
+                            "bounds at index %zu.\n", i);
+            scaler_free(scaler_out);
+            perceptron_free(&model);
+            fclose(fp);
+            return -1;
+        }
+    }
+
     /* Verify we read exactly the expected number of weights */
     /* Check if there is unexpected trailing data */
     float probe;
     if (fread(&probe, sizeof(float), 1, fp) == 1) {
-        fprintf(stderr, "Warning: Unexpected trailing data in model file '%s'.\n",
+        fprintf(stderr, "WARNING: Unexpected trailing data in model file '%s'.\n",
                 filepath);
     }
 
@@ -277,7 +329,7 @@ int model_load(const char *filepath, Perceptron **model_out,
 int model_load_info(const char *filepath, ModelInfo *info)
 {
     if (!filepath || !info) {
-        fprintf(stderr, "Error: NULL argument to model_load_info.\n");
+        fprintf(stderr, "ERROR: NULL argument to model_load_info.\n");
         return -1;
     }
 
@@ -287,8 +339,7 @@ int model_load_info(const char *filepath, ModelInfo *info)
         return -1;
     }
 
-    strncpy(info->loaded_from, filepath, sizeof(info->loaded_from) - 1);
-    info->loaded_from[sizeof(info->loaded_from) - 1] = '\0';
+    snprintf(info->loaded_from, sizeof(info->loaded_from), "%s", filepath);
 
     return 0;
 }

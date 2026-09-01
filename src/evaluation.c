@@ -32,7 +32,7 @@ int calculate_confusion_matrix(const int *predictions, const int *actuals,
                                size_t count, ConfusionMatrix *matrix)
 {
     if (!predictions || !actuals || !matrix || count == 0) {
-        fprintf(stderr, "Error: NULL argument to calculate_confusion_matrix.\n");
+        fprintf(stderr, "ERROR: NULL argument to calculate_confusion_matrix.\n");
         return -1;
     }
 
@@ -48,12 +48,12 @@ int calculate_confusion_matrix(const int *predictions, const int *actuals,
 
         /* Validate labels */
         if (pred != 0 && pred != 1) {
-            fprintf(stderr, "Error: Invalid prediction %d at index %zu. Expected 0 or 1.\n",
+            fprintf(stderr, "ERROR: Invalid prediction %d at index %zu. Expected 0 or 1.\n",
                     pred, i);
             return -1;
         }
         if (actual != 0 && actual != 1) {
-            fprintf(stderr, "Error: Invalid label %d at index %zu. Expected 0 or 1.\n",
+            fprintf(stderr, "ERROR: Invalid label %d at index %zu. Expected 0 or 1.\n",
                     actual, i);
             return -1;
         }

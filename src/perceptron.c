@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* ------------------------------------------------------------------ */
 /*  Public API                                                         */
@@ -25,29 +26,30 @@ Perceptron *perceptron_init(size_t feature_count, float learning_rate,
                             size_t epochs)
 {
     if (feature_count == 0) {
-        fprintf(stderr, "Error: perceptron_init requires at least 1 feature.\n");
+        fprintf(stderr, "ERROR: perceptron_init requires at least 1 feature.\n");
         return NULL;
     }
 
-    if (learning_rate <= 0.0f || learning_rate > 1.0f) {
-        fprintf(stderr, "Error: learning_rate must be in (0, 1].\n");
+    if (learning_rate <= 0.0f || learning_rate > 1.0f ||
+        !isfinite(learning_rate)) {
+        fprintf(stderr, "ERROR: learning_rate must be in (0, 1].\n");
         return NULL;
     }
 
     if (epochs == 0) {
-        fprintf(stderr, "Error: epochs must be > 0.\n");
+        fprintf(stderr, "ERROR: epochs must be > 0.\n");
         return NULL;
     }
 
     Perceptron *p = calloc(1, sizeof(Perceptron));
     if (!p) {
-        fprintf(stderr, "Error: Memory allocation failed for Perceptron.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for Perceptron.\n");
         return NULL;
     }
 
     p->weights = calloc(feature_count, sizeof(float));
     if (!p->weights) {
-        fprintf(stderr, "Error: Memory allocation failed for weights.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for weights.\n");
         free(p);
         return NULL;
     }
@@ -93,12 +95,12 @@ int perceptron_predict(const Perceptron *p, const float *features)
 int perceptron_train(Perceptron *p, const struct Dataset *dataset)
 {
     if (!p || !dataset) {
-        fprintf(stderr, "Error: NULL argument to perceptron_train.\n");
+        fprintf(stderr, "ERROR: NULL argument to perceptron_train.\n");
         return -1;
     }
 
     if (p->feature_count != dataset->num_features) {
-        fprintf(stderr, "Error: Feature count mismatch (perceptron=%zu, dataset=%zu).\n",
+        fprintf(stderr, "ERROR: Feature count mismatch (perceptron=%zu, dataset=%zu).\n",
                 p->feature_count, dataset->num_features);
         return -1;
     }
@@ -107,11 +109,26 @@ int perceptron_train(Perceptron *p, const struct Dataset *dataset)
     size_t max_epochs = p->epochs;
     int epochs_completed = 0;
 
+    if (n == 0) {
+        fprintf(stderr, "ERROR: Cannot train on an empty dataset.\n");
+        return -1;
+    }
+
     for (size_t epoch = 0; epoch < max_epochs; epoch++) {
         int errors = 0;
 
         for (size_t i = 0; i < n; i++) {
             const float *features = dataset->samples[i].features;
+
+            /* Reject non-finite features so NaN/Inf cannot corrupt training. */
+            for (size_t f = 0; f < p->feature_count; f++) {
+                if (!isfinite(features[f])) {
+                    fprintf(stderr, "ERROR: Non-finite feature at sample %zu, "
+                                    "feature %zu.\n", i, f);
+                    return -1;
+                }
+            }
+
             int target = dataset->samples[i].label;
 
             /* Forward pass */
@@ -130,6 +147,21 @@ int perceptron_train(Perceptron *p, const struct Dataset *dataset)
 
                 /* Update bias: bias += lr * error */
                 p->bias += p->learning_rate * (float)error;
+
+                /* Abort if training diverged into NaN/Inf. */
+                if (!isfinite(p->bias)) {
+                    fprintf(stderr, "ERROR: Training diverged (bias became "
+                                    "non-finite) at epoch %zu.\n", epoch + 1);
+                    return -1;
+                }
+                for (size_t f = 0; f < p->feature_count; f++) {
+                    if (!isfinite(p->weights[f])) {
+                        fprintf(stderr, "ERROR: Training diverged (weight %zu "
+                                        "became non-finite) at epoch %zu.\n",
+                                f, epoch + 1);
+                        return -1;
+                    }
+                }
             }
         }
 

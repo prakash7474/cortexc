@@ -9,9 +9,15 @@
 #define CONFIG_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-/* Project version */
-#define C_AI_VERSION "0.1.0"
+/* Project identifiers */
+#define PROJECT_NAME        "CortexC"
+#define PROJECT_DESCRIPTION "CPU-only machine learning engine"
+#define CORTEXC_VERSION     "0.1.0"
+
+/* Backward-compatible alias */
+#define C_AI_VERSION        CORTEXC_VERSION
 
 /* Default training parameters */
 #define DEFAULT_LEARNING_RATE  0.1
